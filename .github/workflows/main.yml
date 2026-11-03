@@ -1,0 +1,83 @@
+package com.mi.cliente.game.module.combat
+
+import org.cloudburstmc.math.vector.Vector3i
+
+class PistonCrystalModule : Module("PistonCrystal", ModuleCategory.Combat) {
+
+    private val range by floatValue("Rango", 5f, 3f..6f)
+    private val delayTicks by intValue("Delay", 2, 0..10)
+
+    private enum class Step { BASE, CRYSTAL, PISTON, POWER, BREAK }
+
+    private var step = Step.BASE
+    private var tick = 0
+    private var target: Player? = null
+    private var base: Vector3i? = null
+    private var pistonPos: Vector3i? = null
+    private var powerPos: Vector3i? = null
+
+    override fun onEnable() = reset()
+
+    override fun onTick() {
+        if (++tick < delayTicks) return
+        tick = 0
+
+        val t = target?.takeIf { it.distanceTo(player) <= range }
+            ?: findNearestPlayer(range).also { target = it } ?: return
+
+        val feet = t.blockPosition
+        if (base == null) {
+            // Lugar junto al objetivo con espacio para base + cristal + pistón
+            val plan = findPlan(feet) ?: return
+            base = plan.base
+            pistonPos = plan.piston
+            powerPos = plan.power
+        }
+
+        when (step) {
+            Step.BASE -> if (placeBlock(base!!, "obsidian")) step = Step.CRYSTAL
+            Step.CRYSTAL -> if (placeCrystal(base!!)) step = Step.PISTON
+            Step.PISTON -> {
+                // El pistón debe mirar hacia el cristal para empujarlo hacia el objetivo
+                if (placeBlock(pistonPos!!, "piston", facing = directionTo(pistonPos!!, base!!)))
+                    step = Step.POWER
+            }
+            Step.POWER -> if (placeBlock(powerPos!!, "redstone_block")) step = Step.BREAK
+            Step.BREAK -> {
+                crystalNear(feet)?.let { attackEntity(it) }
+                reset()
+            }
+        }
+    }
+
+    private fun findPlan(feet: Vector3i): Plan? {
+        val dirs = listOf(
+            Vector3i.from(1, 0, 0), Vector3i.from(-1, 0, 0),
+            Vector3i.from(0, 0, 1), Vector3i.from(0, 0, -1)
+        )
+        for (d in dirs) {
+            val base = feet.add(d).sub(0, 1, 0)             // suelo junto al objetivo
+            val crystal = base.add(0, 1, 0)
+            val piston = crystal.add(d)                      // detrás del cristal
+            val power = piston.add(d)                        // detrás del pistón
+            if (isAir(crystal) && isAir(piston) && isAir(power)) return Plan(base, piston, power)
+        }
+        return null
+    }
+
+    private fun reset() {
+        step = Step.BASE; target = null
+        base = null; pistonPos = null; powerPos = null
+    }
+
+    private data class Plan(val base: Vector3i, val piston: Vector3i, val power: Vector3i)
+
+    // --- Conecta estas con las de tu CrystalAura ---
+    private fun placeBlock(pos: Vector3i, item: String, facing: Int? = null): Boolean = TODO()
+    private fun placeCrystal(on: Vector3i): Boolean = TODO()
+    private fun attackEntity(e: Entity) = TODO()
+    private fun crystalNear(pos: Vector3i): Entity? = TODO()
+    private fun findNearestPlayer(r: Float): Player? = TODO()
+    private fun isAir(pos: Vector3i): Boolean = TODO()
+    private fun directionTo(a: Vector3i, b: Vector3i): Int = TODO()
+}
